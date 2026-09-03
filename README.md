@@ -279,6 +279,95 @@ export const WORK_HOURS = END_HOUR - START_HOUR;
 
 ---
 
+## PostgreSQL-функции
+
+Все функции находятся в схеме `timeline` и вызываются через `api.x125.ru/timeline/<endpoint>`, который маршрутизирует имя пути в функцию `timeline.<path>`.
+
+### Основные функции
+
+| Функция | Параметры | Описание |
+|---------|-----------|----------|
+| `timeline.users_auth` | `params json, _token uuid` | Авторизация по `login`/`password`, возвращает `id, name, token` |
+| `timeline.users_me` | `params json, _token uuid` | Текущий пользователь по токену |
+| `timeline.get_user` | `_token uuid` | Внутренняя: находит пользователя по `token` или бросает 401 |
+| `timeline.check_user_role` | `_user timeline.users, _role text` | Внутренняя: проверяет роль пользователя |
+| `timeline.zones` | `params json, _token uuid` | Список всех зон |
+| `timeline.zones_set` | `params json, _token uuid` | Создание/обновление зоны (`label`, `types`, `tags`). Требует `admin` |
+| `timeline.slots` | `params json, _token uuid` | Возвращает массив `value` JSONB для зоны и периода |
+| `timeline.slots_save` | `params json, _token uuid` | Сохраняет массив слотов (`zone`, `slots`). Проверяет `key` на соответствие `date time` |
+| `timeline.export` | `params json, _token uuid` | Экспорт расписания по дням с `startTime`, `endTime`, `spotTypeText`, `trainers` |
+| `timeline.export_all` | `params json, _token uuid` | Экспорт всех зон в одном массиве с группировкой по дням |
+| `timeline.exportzones` | `params json, _token uuid` | Как `export`, но добавляет поле `zone` в каждую запись |
+| `timeline.export_for_canvas` | `params json, _token uuid` | Экспорт в формате Canvas/календаря: `config` + `occupiedSlots` |
+| `timeline.export_mk` | `params json, _token uuid` | Внутренний экспорт массовых катаний (тип `13`) |
+| `timeline.admin_keys` | `params json, _token uuid` | Список пользователей с ролью `system`, требует `admin` |
+
+### Вспомогательные / внутренние
+
+| Функция | Параметры | Описание |
+|---------|-----------|----------|
+| `timeline.test_token` | `_user_id bigint` | Возвращает `token` пользователя по id (для тестов) |
+| `timeline.get_mk` | `params json, _token uuid` | Стартовое/конечное время массовых катаний сегодня |
+| `timeline.get_mk_view` | `params json, _token uuid` | Список времени массовых катаний позже текущего |
+| `timeline.is_time` | `params json, _token uuid` | Есть ли сейчас активное массовое катание |
+| `timeline.is_time_v2` | `params json, _token uuid` | Текущий медиафайл для `mass_skating_view` |
+| `timeline.nearest` | `params json, _token uuid` | Ближайшее массовое катание в `mass_skating_view` |
+| `timeline.get_time` | `params json, _token uuid` | Генерация меток времени (debug/dev) |
+| `timeline.get_times` | — | Возвращает `TABLE(start_times, end_times)` |
+| `timeline.get_type13_entries` | `export_data json`/`jsonb` | Фильтрует экспорт по `spotType = 13` |
+| `timeline.generate_timestamp_arrays` | `num_elements integer` | Генерирует массив timestamp-ов |
+
+### Публичные утилиты (схема `public`)
+
+Функции для безопасного чтения JSON-параметров. Используются всеми RPC-функциями.
+
+#### `require*` — обязательные параметры
+
+| Функция | Возвращает | Ошибка, если отсутствует |
+|---------|------------|--------------------------|
+| `public.require` | `void` | `поле пустое` |
+| `public.requireBigint` | `bigint` | — |
+| `public.requireBoolean` | `boolean` | — |
+| `public.requireDate` | `timestamp` | — |
+| `public.requireInt` | `integer` | — |
+| `public.requireJson` | `json` | — |
+| `public.requireJsonb` | `jsonb` | — |
+| `public.requireNumeric` | `numeric(10,2)` | — |
+| `public.requireText` | `text` (trim) | — |
+| `public.requireUUID` | `uuid` | — |
+| `public.requireUUIDArray` | `uuid[]` | — |
+
+#### `optional*` — параметры со значением по умолчанию
+
+| Функция | Параметры | Возвращает |
+|---------|-----------|------------|
+| `public.optionalBoolean` | `params json, key text` (+ overload с `_default`) | `boolean` |
+| `public.optionalDate` | `params json, key text` (+ overload с `_default`) | `timestamp` |
+| `public.optionalInt` | `params json, key text` (+ overload с `_default`) | `integer` |
+| `public.optionalJson` | `params json, key text` | `json` |
+| `public.optionalJsonb` | `params json, key text` | `jsonb` |
+| `public.optionalNumeric` | `params json, key text` | `numeric(10,2)` |
+| `public.optionalText` | `params json, key text` (+ overload с `_default`) | `text` (trim, пустая строка → `null`) |
+| `public.optionalUUID` | `params json, key text` (+ overload с `_default`) | `uuid` |
+
+### Примеры вызовов
+
+```sql
+-- Авторизация
+SELECT timeline.users_auth('{"login":"admin","password":"secret"}'::json, null);
+
+-- Получить слоты
+SELECT timeline.slots('{"zone":1,"from":"2026-09-01","to":"2026-09-07"}'::json, 'your-uuid-token'::uuid);
+
+-- Сохранить слоты
+SELECT timeline.slots_save('{"zone":1,"slots":[{"key":"2026-09-03 09:00","length":4,"i":{"h":9,"m":0},"type":13,"tags":[],"rest":["2026-09-03 09:15","2026-09-03 09:30","2026-09-03 09:45"]},{"key":"2026-09-03 09:15","length":1,"i":{"h":9,"m":15},"type":13,"tags":[],"h":true},{"key":"2026-09-03 09:30","length":1,"i":{"h":9,"m":30},"type":13,"tags":[],"h":true},{"key":"2026-09-03 09:45","length":1,"i":{"h":9,"m":45},"type":13,"tags":[],"h":true}]}'::json, 'your-uuid-token'::uuid);
+
+-- Экспорт
+SELECT timeline.export('{"zone":1,"from":"2026-09-01","to":"2026-09-07"}'::json, 'your-uuid-token'::uuid);
+```
+
+---
+
 ## Распространённые проблемы
 
 | Симптом | Причина | Решение |
