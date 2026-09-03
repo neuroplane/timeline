@@ -5,4 +5,9 @@ import {svelte} from '@sveltejs/vite-plugin-svelte'
 export default defineConfig({
   base: '/timeline',
   plugins: [svelte()],
+  build: {
+    rollupOptions: {
+      external: ['/config.js', '/timeline/config.js']
+    }
+  }
 })
