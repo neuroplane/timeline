@@ -86,7 +86,8 @@
     console.log(e)
   }
 
-  const workHours = 17
+  const startHour = 7
+  const workHours = 24 - startHour
   const weekPadding = 5
   const defaultTextColor = '#aaa';
   const defaultSlotBorderColor = '#777';
@@ -130,7 +131,7 @@
     for (let day of days) {
       for (let i = 0; i < workHours; i++) {
         for (let j = 0; j < 4; j++) {
-          const hour = i + 7;
+          const hour = i + startHour;
           const minute = j * 15;
           const length = 1;// Math.round(Math.random()*2)+1;
           const label = minute.toString();
@@ -369,7 +370,7 @@
       ctx.fillRect(x, 0, width, height);
       ctx.strokeRect(x, 0, width, height);
       ctx.fillStyle = '#000000';
-      ctx.fillText(i + 7, x + width / 2, y + height / 2);
+      ctx.fillText(i + startHour, x + width / 2, y + height / 2);
       //   ctx.strokeStyle = 'black';
       //   ctx.beginPath();
       //   ctx.moveTo(x, y);
@@ -462,7 +463,7 @@
 
       const info = getInfoByKey(daySlot.key)
       if (info.h) {
-        i++;  // Учитываем скрытый слот в позиционировании
+        
         continue
       }
 

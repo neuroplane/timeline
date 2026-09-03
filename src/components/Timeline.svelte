@@ -210,7 +210,7 @@
 
   const timeslots = []
 
-  for (let i = 7; i < 24; i++) {
+  for (let i = 8; i < 24; i++) {
     const minutes = [0, 15, 30, 45]
     timeslots.push([i, minutes])
 
