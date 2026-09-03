@@ -33,6 +33,7 @@
   import WeekMenu from "./WeekMenu.svelte"
   import {hasChanges, slotsInfo} from "../lib/MainStore.js";
   import {apiService} from "../lib/api.js";
+  import {SPOT_DURATION, SLOTS_PER_HOUR, MINUTES, START_HOUR, WORK_HOURS} from "../lib/constants.js";
 
 
   export const reset = () => {
@@ -86,8 +87,8 @@
     console.log(e)
   }
 
-  const startHour = 7
-  const workHours = 24 - startHour
+  const startHour = START_HOUR
+  const workHours = WORK_HOURS
   const weekPadding = 5
   const defaultTextColor = '#aaa';
   const defaultSlotBorderColor = '#777';
@@ -95,7 +96,7 @@
 
   let main = document.getElementById('main');
 
-  const canvasWidth = workHours * 4 * slotSizeX + paddingLeft
+  const canvasWidth = workHours * SLOTS_PER_HOUR * slotSizeX + paddingLeft
 
 
   let days = []
@@ -130,9 +131,9 @@
 
     for (let day of days) {
       for (let i = 0; i < workHours; i++) {
-        for (let j = 0; j < 4; j++) {
+        for (let j = 0; j < SLOTS_PER_HOUR; j++) {
           const hour = i + startHour;
-          const minute = j * 15;
+          const minute = j * SPOT_DURATION;
           const length = 1;// Math.round(Math.random()*2)+1;
           const label = minute.toString();
           const str_date = day.date.toISOString().split('T')[0]
@@ -358,7 +359,7 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = "13px Rubik";
-    const width = slotSizeX * 4
+    const width = slotSizeX * SLOTS_PER_HOUR
     const height = slotSizeY;
     ctx.strokeStyle = defaultSlotBorderColor;
     for (let i = 0; i < workHours; i++) {
@@ -428,7 +429,7 @@
     let toMinute = info.i.m
 
     for (let i = 0; i < info.length; i++) {
-      toMinute += 15
+      toMinute += SPOT_DURATION
       if (toMinute > 59) {
         toMinute = 0
         toHour += 1
@@ -440,9 +441,9 @@
 
     let label = info.i.m.toString()
 
-    if (info.length > 1 && info.length < 3) {
+    if (info.length > 1 && info.length < SLOTS_PER_HOUR) {
       label = `${fromMinute}-${toMinute}`
-    } else if (info.length < 4) {
+    } else if (info.length < SLOTS_PER_HOUR + 1) {
       label = `${fromHour}:${fromMinute}-${toHour}:${toMinute}`
     } else {
       label = `${fromHour}:${fromMinute} - ${toHour}:${toMinute}`
