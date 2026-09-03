@@ -86,7 +86,7 @@
     console.log(e)
   }
 
-  const workHours = 16
+  const workHours = 17
   const weekPadding = 5
   const defaultTextColor = '#aaa';
   const defaultSlotBorderColor = '#777';
@@ -130,7 +130,7 @@
     for (let day of days) {
       for (let i = 0; i < 16; i++) {
         for (let j = 0; j < 4; j++) {
-          const hour = i + 8;
+          const hour = i + 7;
           const minute = j * 15;
           const length = 1;// Math.round(Math.random()*2)+1;
           const label = minute.toString();
@@ -369,7 +369,7 @@
       ctx.fillRect(x, 0, width, height);
       ctx.strokeRect(x, 0, width, height);
       ctx.fillStyle = '#000000';
-      ctx.fillText(i + 8, x + width / 2, y + height / 2);
+      ctx.fillText(i + 7, x + width / 2, y + height / 2);
       //   ctx.strokeStyle = 'black';
       //   ctx.beginPath();
       //   ctx.moveTo(x, y);
