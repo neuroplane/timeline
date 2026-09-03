@@ -462,6 +462,7 @@
 
       const info = getInfoByKey(daySlot.key)
       if (info.h) {
+        i++;  // Учитываем скрытый слот в позиционировании
         continue
       }
 
