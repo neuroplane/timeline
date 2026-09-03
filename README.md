@@ -1,47 +1,310 @@
-# Svelte + Vite
+# Timeline — планировщик расписания аренды площадок
 
-This template should help get you started developing with Svelte in Vite.
+> Веб-приложение для визуального составления расписания занятий на льду/площадках.  
+> Активная версия: https://x125.ru/timeline/
 
-## Recommended IDE Setup
+---
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+## Содержание
 
-## Need an official Svelte framework?
+- [Стек](#стек)
+- [Архитектура](#архитектура)
+- [Быстрый старт](#быстрый-старт)
+- [Структура проекта](#структура-проекта)
+- [База данных](#база-данных)
+- [API](#api)
+- [Сборка и деплой](#сборка-и-деплой)
+- [Конфигурация](#конфигурация)
+- [Логика отрисовки слотов](#логика-отрисовки-слотов)
+- [Распространённые проблемы](#распространённые-проблемы)
+- [Разработка и планы](#разработка-и-планы)
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+---
 
-## Technical considerations
+## Стек
 
-**Why use this over SvelteKit?**
+| Слой | Технология |
+|------|------------|
+| Frontend | Svelte 4 + Vite 5 |
+| UI | Flowbite Svelte, Tailwind CSS |
+| Canvas | HTML5 Canvas (основной таймлайн) |
+| Шрифт | Rubik через Google WebFont |
+| Backend API | PostgreSQL RPC-функции (PL/pgSQL), вызываемые по HTTP |
+| Авторизация | UUID-токены, передаваемые в `Authorization: Token <uuid>` |
+| Хостинг frontend | `/var/www/html/timeline/` (Caddy) |
+| API endpoint | `https://api.x125.ru/timeline` |
 
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
+---
 
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
+## Архитектура
 
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why `global.d.ts` instead of `compilerOptions.types` inside `jsconfig.json` or `tsconfig.json`?**
-
-Setting `compilerOptions.types` shuts out all other types not explicitly listed in the configuration. Using triple-slash references keeps the default TypeScript setting of accepting type information from the entire workspace, while also adding `svelte` and `vite/client` type information.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `checkJs` in the JS template?**
-
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
 ```
+┌─────────────────┐         POST JSON         ┌─────────────────────┐
+│  Browser (SPA)  │  ──────────────────────▶  │  api.x125.ru/timeline │
+│  /timeline/     │  Authorization: Token ...   │  PostgreSQL RPC      │
+└─────────────────┘                           └─────────────────────┘
+         │                                               │
+         │                                               │
+         ▼                                               ▼
+ /timeline/config.js                              timeline.* schema
+ (window.API_HOST)
+```
+
+### Поток данных
+
+1. `index.html` загружает `/timeline/config.js`, который задаёт `window.API_HOST`.
+2. `src/lib/api.js` шлёт POST-запросы на `${API_HOST}/<rpc>`.
+3. Backend вызывает PostgreSQL-функции схемы `timeline`.
+4. Слоты хранятся в `timeline.values` как `jsonb`.
+5. Canvas-таймлайн отрисовывает дни, часы и слоты.
+
+---
+
+## Быстрый старт
+
+### Требования
+
+- Node.js 18+
+- `pnpm` (рекомендуется) или `npm`
+
+### Установка
+
+```bash
+git clone https://github.com/neuroplane/timeline.git
+cd timeline
+pnpm install
+```
+
+### Локальная разработка
+
+```bash
+pnpm dev
+```
+
+Откроется `http://localhost:5173/timeline/` (base path `/timeline` задан в `vite.config.js`).
+
+> **Важно**: для работы с API нужен файл `public/config.js` с `window.API_HOST = "https://api.x125.ru/timeline"`.
+> При билде `public/config.js` не попадает в `dist`, поэтому в продакшене он прописывается отдельно.
+
+### Сборка
+
+```bash
+pnpm build
+```
+
+Результат в `dist/`. Статика раскладывается на сервере в `/var/www/html/timeline/`.
+
+---
+
+## Структура проекта
+
+```
+timeline/
+├── index.html                 # точка входа SPA
+├── package.json
+├── vite.config.js             # base: '/timeline'
+├── TODO.md                    # план улучшений
+├── src/
+│   ├── main.js                # загрузка шрифта Rubik, монтирование App
+│   ├── App.svelte             # обёртка авторизации
+│   ├── app.pcss               # глобальные Tailwind стили
+│   ├── components/
+│   │   ├── Auth.svelte        # логин
+│   │   ├── Wrapper.svelte     # шапка, выбор зоны, даты, кнопки
+│   │   ├── CanvasTimeline.svelte   # основной таймлайн на Canvas
+│   │   ├── Menu.svelte        # контекстное меню слота
+│   │   ├── WeekMenu.svelte    # копирование недель
+│   │   ├── ExportModal.svelte # экспорт
+│   │   ├── SettingsMenu.svelte# настройки
+│   │   └── Timeline.svelte    # устаревший SVG-таймлайн (не используется)
+│   ├── lib/
+│   │   ├── api.js             # HTTP-клиент + RPC-методы
+│   │   ├── constants.js       # SPOT_DURATION, SLOTS_PER_HOUR, START_HOUR
+│   │   └── MainStore.js       # Svelte stores
+│   └── data.js                # fallback-данные зон
+├── sql/
+│   ├── migration.sql          # начальная схема + seed
+│   ├── api/
+│   │   ├── slots.sql          # timeline.slots(...)
+│   │   ├── slots_save.sql     # timeline.slots_save(...)
+│   │   ├── export.sql         # timeline.export(...)
+│   │   ├── zones.sql          # timeline.zones
+│   │   ├── zones_set.sql      # timeline.zones_set(...)
+│   │   └── admin_keys.sql     # timeline.admin_keys(...)
+│   └── users/
+│       └── *.sql              # auth/роли
+└── dist/                      # production bundle
+```
+
+---
+
+## База данных
+
+### Схема `timeline`
+
+| Таблица | Назначение |
+|---------|------------|
+| `users` | id, name, login, password, role, token(uuid) |
+| `zones` | id, label, label_short, types(jsonb), tags(jsonb) |
+| `values` | zone, date, time, value(jsonb) — основные слоты |
+| `values_backup` | резервная копия values |
+
+### Таблица `values`
+
+```text
+zone   | integer  | часть PK
+   date   | date     | часть PK
+   time   | time     | часть PK
+   value  | jsonb    | данные слота
+```
+
+### Структура `value` (jsonb)
+
+```json
+{
+  "key": "2026-09-03 09:00",
+  "i": { "h": 9, "m": 0 },
+  "length": 4,
+  "rest": ["2026-09-03 09:15", "2026-09-03 09:30", "2026-09-03 09:45"],
+  "type": 13,
+  "tags": [3],
+  "label": "0",
+  "comment": ""
+}
+```
+
+Поле `length` = количество 15-минутных спотов в объединённом блоке.  
+Поле `h: true` — признак "скрытого" слота, входящего в `rest` главного слота.  
+`type` — id типа из `zones.types`.
+
+### Пример запроса
+
+```sql
+SELECT time, value
+FROM timeline.values
+WHERE zone = 1
+  AND date = '2026-09-03'
+ORDER BY time;
+```
+
+---
+
+## API
+
+Все запросы POST, JSON body, заголовок `Authorization: Token <uuid>` для protected-методов.
+
+| Endpoint | Функция | Описание |
+|----------|---------|----------|
+| `/users/me` | `timeline.get_user` | проверка токена |
+| `/users/auth` | `timeline.auth` | логин/пароль → токен |
+| `/zones` | `timeline.zones` | список зон |
+| `/zones/set` | `timeline.zones_set` | обновить зону (types/tags) |
+| `/slots` | `timeline.slots` | слоты за период |
+| `/slots/save` | `timeline.slots_save` | сохранить изменённые слоты |
+| `/export` | `timeline.export` | экспорт расписания |
+| `/admin/keys` | `timeline.admin_keys` | список системных пользователей |
+
+### Пример: получить слоты
+
+```bash
+curl -X POST https://api.x125.ru/timeline/slots \
+  -H "Authorization: Token <uuid>" \
+  -d '{"zone":1,"from":"2026-09-01","to":"2026-09-07"}'
+```
+
+---
+
+## Сборка и деплой
+
+### Ручной деплой
+
+```bash
+pnpm build
+scp -r dist/* neuroplane@x125.ru:/var/www/html/timeline/
+```
+
+После сборки `index.html` ссылается на `assets/index-*.js` и `assets/index-*.css`.  
+Продовский `config.js` должен лежать в `/var/www/html/timeline/config.js`.
+
+### Откат на предыдущий бандл
+
+Если новая версия сломалась, переключите `index.html` на предыдущий JS из `dist/assets/`:
+
+```bash
+ssh neuroplane@x125.ru "sed -i 's/index-NEW\.js/index-OLD\.js/' /var/www/html/timeline/index.html"
+```
+
+### Резервные теги
+
+Тег `backup-2026-09-03` создан на исходном состоянии:
+
+```bash
+git show backup-2026-09-03 --stat
+```
+
+---
+
+## Конфигурация
+
+### `public/config.js` (для dev)
+
+```javascript
+window.API_HOST = "https://api.x125.ru/timeline";
+```
+
+### `src/lib/constants.js` (frontend-константы)
+
+```javascript
+export const SPOT_DURATION = 15;       // длина одного слота в минутах
+export const SLOTS_PER_HOUR = 60 / SPOT_DURATION;
+export const START_HOUR = 7;           // начало дня
+export const END_HOUR = 24;            // конец дня
+export const WORK_HOURS = END_HOUR - START_HOUR;
+```
+
+> Для копии под 20-минутные споты достаточно изменить `SPOT_DURATION` и завести отдельную базу/API.
+
+---
+
+## Логика отрисовки слотов
+
+1. `handleDateChange()` генерирует массив `day.slots` — по одному объекту на каждый 15-минутный интервал от `START_HOUR` до `END_HOUR`.
+2. `getSlots()` запрашивает сохранённые слоты и мержит их в `$slotsInfo` (key → jsonb value).
+3. `drawHeader()` рисует часы и чёт/нечёт подложку.
+4. `drawOneLine()` рисует один день:
+   - слот с `h: true` пропускается (он уже нарисован в составе главного);
+   - главный слот рисуется шириной `slotSizeX * length`;
+   - счётчик `i` увеличивается на `info.length`, чтобы следующий слот шёл сразу после группы.
+5. `genLabel()` формирует подпись: `0`, `00-30`, `09:00-09:45`, `09:00 - 10:00`.
+
+---
+
+## Распространённые проблемы
+
+| Симптом | Причина | Решение |
+|---------|---------|---------|
+| Ряд визуально короче, пропали 15 мин | Есть `h: true` слот без родительского `rest` | Удалить осиротевшие записи или проверить `slots_save` |
+| Слоты смещены относительно заголовков | `startHour` и `workHours` не синхронизированы | Убедиться, что оба цикла используют одни константы |
+| Пустой экран, 404 `config.js` | В `index.html` неправильный путь к `config.js` | `/timeline/config.js` вместо `/config.js` |
+| Цвета разные в разных залах | `zones.types` отличаются | Скопировать `types` из эталонной зоны |
+
+---
+
+## Разработка и планы
+
+См. [TODO.md](./TODO.md).
+
+Ключевые направления:
+
+1. Вынести все хардкод-значения в `constants.js` и конфиг БД.
+2. Добавить валидацию в `slots_save` (пересечения, осиротевшие `h`).
+3. Миграции SQL вместо хаотичных `.sql`-файлов.
+4. Тесты для логики группировки слотов.
+5. Удалить неиспользуемый `Timeline.svelte` (SVG).
+
+---
+
+## Лицензия
+
+Проект друга — форк: https://github.com/neuroplane/timeline  
+Оригинал: https://github.com/romanesko/timeline
