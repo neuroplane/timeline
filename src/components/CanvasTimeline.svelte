@@ -128,7 +128,7 @@
     days = loc_days
 
     for (let day of days) {
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < workHours; i++) {
         for (let j = 0; j < 4; j++) {
           const hour = i + 7;
           const minute = j * 15;
@@ -360,7 +360,7 @@
     const width = slotSizeX * 4
     const height = slotSizeY;
     ctx.strokeStyle = defaultSlotBorderColor;
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < workHours; i++) {
       ctx.fillStyle = i % 2 === 0 ? evenFill : oddFill;
       const x = paddingLeft + i * width;
       const y = 0;
