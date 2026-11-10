@@ -1,4 +1,4 @@
-<main style="min-height: 100lvh; padding:10px">
+<main style="padding:10px">
     <Toast class="absolute top-0 left-0" color="green" dismissable={true} transition={slide} bind:open={savedToast}>
         <svelte:fragment slot="icon">✓</svelte:fragment>
         Успешно сохранено
@@ -79,7 +79,7 @@
   import SettingsMenu from "./SettingsMenu.svelte";
 
 
-  $: renderKey = JSON.stringify(selectedZone) + minDate + JSON.stringify(selectedTag) + JSON.stringify(settings)
+  $: renderKey = JSON.stringify(selectedZone) + minDate + JSON.stringify(selectedTag) + JSON.stringify($settings)
 
 
   let defaultModal = false
@@ -133,11 +133,19 @@
   }
 
 
-  function handleDateChange(e) {
-    minDate = e.target.value
+  function startOfWeek(d) {
+    const date = new Date(d)
+    date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+    return date
   }
 
-  let minDate = new Date().toISOString().split('T')[0]
+  const fmtLocal = d => `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`
+
+  function handleDateChange(e) {
+    minDate = fmtLocal(startOfWeek(e.target.value))
+  }
+
+  let minDate = fmtLocal(startOfWeek(new Date()))
 
 
   let selectedZoneId = undefined

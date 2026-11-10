@@ -145,6 +145,6 @@ class ApiService {
 }
 
 
-const api = new Api(API_HOST)
+const api = new Api(typeof API_HOST !== 'undefined' ? API_HOST : window.API_HOST)
 
 export const apiService = new ApiService(api);

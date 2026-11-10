@@ -1,5 +1,5 @@
-<main bind:this={main} style="min-height: 100lvh; padding:10px">
-  <canvas bind:this={canvas} height="745" id="canvas" width={canvasWidth}></canvas>
+<main bind:this={main} style="padding:10px">
+  <canvas bind:this={canvas} height={canvasHeight} id="canvas" width={canvasWidth} style="background:#fff; display:block"></canvas>
   {#if debugMode}
     <!--        <div class="mt-2 text-gray-500" style="font-size: 8px">-->
     <!--            <pre>checkboxes: {JSON.stringify(tagsCheckBoxes)}</pre>-->
@@ -17,11 +17,17 @@
       {/each}
     </div>
   {/if}
-  <div bind:this={menuEl} style="position:absolute; left:{menuPosition.x}px; top:{menuPosition.y}px;">
+  {#if menuOpen}
+    <div on:mousedown|preventDefault|stopPropagation={backdropClick}
+         on:touchstart|preventDefault|stopPropagation={backdropClick}
+         style="position:fixed; inset:0; background:rgba(0,0,0,0.15); z-index:40"></div>
+  {/if}
+
+  <div bind:this={menuEl} style="position:fixed; z-index:50; left:{menuPosition.x}px; top:{menuPosition.y}px;">
     <Menu zone={zone} on:done={menuActionDone} selectedKeys={selectedKeys}/>
   </div>
 
-  <div style="position:absolute; left:{weekMenuPosition.x}px; top:{weekMenuPosition.y}px;">
+  <div bind:this={weekMenuEl} style="position:fixed; z-index:50; left:{weekMenuPosition.x}px; top:{weekMenuPosition.y}px;">
     <WeekMenu on:done={weekMenuActionDone} selected={lastWeekSelection}/>
   </div>
 
@@ -46,6 +52,7 @@
 
   let menuPosition = {x: -1000, y: -1000};
   let weekMenuPosition = {x: -1000, y: -1000};
+  let menuOpen = false;
   // let menuPosition = {x: 0, y: -0};
 
   export let zone;
@@ -90,6 +97,7 @@
   const startHour = START_HOUR
   const workHours = WORK_HOURS
   const weekPadding = 5
+  const rowH = slotSizeY
   const defaultTextColor = '#aaa';
   const defaultSlotBorderColor = '#777';
 
@@ -98,10 +106,21 @@
 
   const canvasWidth = workHours * SLOTS_PER_HOUR * slotSizeX + paddingLeft
 
+  $: weeksCount = Math.max(Math.ceil(daysCount / 7), 1)
+  $: normalizedDaysCount = weeksCount * 7
+  // start is always Monday, so there is exactly one Sunday per week
+  $: canvasHeight = weekPadding + normalizedDaysCount * rowH + weeksCount * weekPadding + 2
+
 
   let days = []
   const today = new Date()
 
+
+  function startOfWeek(d) {
+    const date = new Date(d)
+    date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+    return date
+  }
 
   function getDateString(d) {
     const year = d.getFullYear(); // Get the year (e.g., 2023)
@@ -112,12 +131,12 @@
   }
 
   function handleDateChange() {
-    const frDate = new Date(fromDate)
+    const frDate = startOfWeek(fromDate)
     toDate = new Date(maxDate)
 
 
     const loc_days = []
-    for (let i = 0; i < daysCount; i++) {
+    for (let i = 0; i < normalizedDaysCount; i++) {
       const d = new Date(frDate.getTime() + (i * 24 * 60 * 60 * 1000));
       const key = getDateString(d)
       loc_days.push({
@@ -181,6 +200,7 @@
 
 
   let menuEl;
+  let weekMenuEl;
 
 
   function getSelectedKeys() {
@@ -232,18 +252,20 @@
     menuPosition.y = -1000;
     weekMenuPosition.x = -1000;
     weekMenuPosition.y = -1000;
+    menuOpen = false;
+  }
+
+  function backdropClick() {
+    hideMenu()
+    lastWeekSelection = null
+    render()
   }
 
   function drawMenu() {
-    let firstSelected = {x: 0, y: 0};
     let lastSelected = {x: 0, y: 0};
     let lastSelectedTopRow = {x: 0, y: 0};
 
     Object.values(selected).forEach(rect => {
-
-      if (firstSelected.x === 0 || rect.x < firstSelected.x) firstSelected = rect
-
-
       if (rect.x >= lastSelected.x && rect.y >= lastSelected.y) {
         lastSelected = rect
       }
@@ -253,40 +275,24 @@
     });
 
     const canvasPosition = canvas.getBoundingClientRect()
+    const menuBoundData = menuEl.getBoundingClientRect()
 
-    const canLeftPad = canvasPosition.left + window.scrollX;
-    const canTopPad = canvasPosition.top + window.scrollY;
+    let x = canvasPosition.left + lastSelected.x - 48
+    let y = canvasPosition.top + lastSelected.y + slotSizeY + 4
 
-
-    let x = canLeftPad + lastSelected.x - 48
-    let y = canTopPad + lastSelected.y + 24
-
+    if (x + menuBoundData.width > window.innerWidth - 12) {
+      x = window.innerWidth - menuBoundData.width - 12
+    }
+    if (y + menuBoundData.height > window.innerHeight - 12) {
+      y = canvasPosition.top + lastSelectedTopRow.y - menuBoundData.height - 8
+    }
 
     if (x < 12) x = 12
     if (y < 12) y = 12
 
-    const menuBoundData = menuEl.getBoundingClientRect()
-
-    if (x + menuBoundData.width > canLeftPad + canvasPosition.width) {
-      x = canLeftPad + canvasPosition.width - menuBoundData.width
-    }
-
-    /*
-    if (y> canvasPosition.height*3/4){
-      y = canTopPad + lastSelectedTopRow.y - menuBoundData.height
-    }
-
-    if (y<0){
-      y = lastSelectedTopRow.y
-      x=lastSelected.x + 40
-    }
-
-    if (x + menuBoundData.width > canLeftPad + canvasPosition.width) {
-      x = firstSelected.x - menuBoundData.width
-    }*/
-
     menuPosition.x = x
     menuPosition.y = y
+    menuOpen = true
   }
 
 
@@ -301,6 +307,7 @@
   const weeks = []
 
   function drawDates() {
+    weeks.length = 0
     ctx.font = "11px Rubik";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -316,17 +323,17 @@
       weekDays.push(days[i].key)
       const day = days[i]
       const dow = day.date.getDay()
-      y += 20;
+      y += rowH;
       // ctx.strokeStyle = 'black';
       ctx.fillStyle = '#FFF';
-      ctx.fillRect(0, y, datesPaddingLeft, 20);
+      ctx.fillRect(0, y, datesPaddingLeft, rowH);
       ctx.fillStyle = '#000';
 
       if (dow === 6 || dow === 0) {
         ctx.fillStyle = '#FF0000';
       }
 
-      ctx.fillText(day.label, datesPaddingLeft / 2, y + 12);
+      ctx.fillText(day.label, datesPaddingLeft / 2, y + rowH / 2 + 2);
 
       if (selectedTag) {
         ctx.globalAlpha = 0.2
@@ -336,8 +343,8 @@
 
       if (dow === 0) {
         ctx.beginPath();
-        ctx.moveTo(25, y + 22);
-        ctx.lineTo(datesPaddingLeft - 25, y + 22);
+        ctx.moveTo(25, y + rowH + 2);
+        ctx.lineTo(datesPaddingLeft - 25, y + rowH + 2);
         ctx.stroke();
 
       }
@@ -388,7 +395,7 @@
     rectangles = []
     let y = weekPadding;
     for (let i = 0; i < days.length; i++) {
-      y += 20
+      y += rowH
       const day = days[i]
       drawOneLine(day, y)
 
@@ -547,6 +554,7 @@
 
 
   function onMousseUp(e) {
+    if (menuOpen) return;
     if (!isDrawing) return;
     isDrawing = false;
     let mouseX = e.layerX - canvas.offsetLeft;
@@ -609,7 +617,8 @@
   let lastWeekSelection = null
 
   function drawWeekSelection(week) {
-    if (lastWeekSelection === week) return;
+    if (menuOpen) return;
+    if (lastWeekSelection && lastWeekSelection.days[0] === week.days[0]) return;
 
     if (menuPosition.x > 0) {
       return
@@ -623,7 +632,7 @@
     ctx.strokeStyle = "red";
 
     ctx.beginPath();
-    ctx.roundRect(1, week.startY + 22, paddingLeft - 4, week.y - week.startY - 8, 4);
+    ctx.roundRect(1, week.startY + rowH + 1, paddingLeft - 4, week.days.length * rowH - 2, 4);
     ctx.closePath();
 
     // Fill the shape
@@ -636,13 +645,13 @@
 
     if (mouseX < paddingLeft) {
       for (let week of weeks) {
-        if (mouseY > week.startY && mouseY < week.y) {
+        if (mouseY > week.startY + rowH && mouseY <= week.y + rowH) {
           drawWeekSelection(week)
           return
         }
       }
     } else {
-      if (lastWeekSelection !== null && weekMenuPosition.x < paddingLeft) {
+      if (lastWeekSelection !== null) {
         lastWeekSelection = null
         render()
       }
@@ -653,6 +662,7 @@
 
   function onMousseMove(e) {
 
+    if (menuOpen) return;
 
     e.preventDefault();
 
@@ -677,12 +687,30 @@
 
 
   function drawWeekMenu(mouseX, mouseY, week) {
-    weekMenuPosition.x = mouseX + 50
-    weekMenuPosition.y = mouseY + 100
+    const canvasPosition = canvas.getBoundingClientRect()
+
+    let x = canvasPosition.left + mouseX + 8
+    let y = canvasPosition.top + mouseY + 8
+
+    if (weekMenuEl) {
+      const menuBoundData = weekMenuEl.getBoundingClientRect()
+      if (x + menuBoundData.width > window.innerWidth - 12) {
+        x = window.innerWidth - menuBoundData.width - 12
+      }
+      if (y + menuBoundData.height > window.innerHeight - 12) {
+        y = canvasPosition.top + mouseY - menuBoundData.height - 8
+      }
+    }
+
+    weekMenuPosition.x = Math.max(x, 12)
+    weekMenuPosition.y = Math.max(y, 12)
+    menuOpen = true
   }
 
 
   function onMouseDown(e) {
+
+    if (menuOpen) return;
 
     if (isSafari) {
       startX = e.layerX
@@ -711,9 +739,8 @@
 
 
     ctx = canvas.getContext('2d');
-    if (window.devicePixelRatio > 1) {
-      // const ratio = window.devicePixelRatio
-      const ratio = 4
+    const ratio = window.devicePixelRatio || 1;
+    if (ratio > 1) {
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
       canvas.width = canvasWidth * ratio;
@@ -746,18 +773,19 @@
     beforeRender();
     handleDateChange();
 
-    main.addEventListener('mouseup', onMousseUp);
-    main.addEventListener('mousemove', onMousseMove);
+    window.addEventListener('mouseup', onMousseUp);
+    window.addEventListener('mousemove', onMousseMove);
 
-    main.addEventListener('touchend', onMousseUp);
-    main.addEventListener('touchmove', onMousseMove);
+    window.addEventListener('touchend', onMousseUp);
+    window.addEventListener('touchmove', onMousseMove);
 
   });
 
   function getSlots() {
-    const maxDate = (new Date(new Date(fromDate).getTime() + (daysCount * 24 * 60 * 60 * 1000))).toISOString().split('T')[0]
+    const startDate = startOfWeek(fromDate)
+    const maxDate = getDateString(new Date(startDate.getTime() + (normalizedDaysCount * 24 * 60 * 60 * 1000)))
 
-    apiService.getSlots(zone.id, fromDate, maxDate).then(savedSlots => {
+    apiService.getSlots(zone.id, getDateString(startDate), maxDate).then(savedSlots => {
       console.group('getSlots')
       console.log('selectedZoneId', zone.id)
       console.log('slots', savedSlots)
