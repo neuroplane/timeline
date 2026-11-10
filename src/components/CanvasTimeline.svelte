@@ -27,16 +27,12 @@
     <Menu zone={zone} on:done={menuActionDone} selectedKeys={selectedKeys}/>
   </div>
 
-  <div bind:this={weekMenuEl} style="position:fixed; z-index:50; left:{weekMenuPosition.x}px; top:{weekMenuPosition.y}px;">
-    <WeekMenu on:done={weekMenuActionDone} selected={lastWeekSelection}/>
-  </div>
 
 </main>
 
 <script>
   import {onMount} from 'svelte';
   import Menu from "./Menu.svelte";
-  import WeekMenu from "./WeekMenu.svelte"
   import {hasChanges, slotsInfo} from "../lib/MainStore.js";
   import {apiService} from "../lib/api.js";
   import {SPOT_DURATION, SLOTS_PER_HOUR, MINUTES, START_HOUR, WORK_HOURS} from "../lib/constants.js";
@@ -51,7 +47,6 @@
 
 
   let menuPosition = {x: -1000, y: -1000};
-  let weekMenuPosition = {x: -1000, y: -1000};
   let menuOpen = false;
   // let menuPosition = {x: 0, y: -0};
 
@@ -72,6 +67,7 @@
   const evenFill = '#fcf7f1'
 
   const paddingLeft = 65
+  const weekZoneWidth = 20
   export let slotSizeX
   export let slotSizeY
   export let daysCount
@@ -109,7 +105,8 @@
   $: weeksCount = Math.max(Math.ceil(daysCount / 7), 1)
   $: normalizedDaysCount = weeksCount * 7
   // start is always Monday, so there is exactly one Sunday per week
-  $: canvasHeight = weekPadding + normalizedDaysCount * rowH + weeksCount * weekPadding + 2
+  // +1 rowH accounts for the header row drawn by drawHeader (days are drawn below it)
+  $: canvasHeight = weekPadding + (normalizedDaysCount + 1) * rowH + weeksCount * weekPadding + 2
 
 
   let days = []
@@ -141,7 +138,7 @@
       const key = getDateString(d)
       loc_days.push({
         key,
-        label: d.toLocaleDateString('ru-RU', {weekday: 'short', day: 'numeric', month: 'short'}),
+        label: d.toLocaleDateString('ru-RU', {weekday: 'short'}) + ' ' + key.split('-')[2],
         date: d,
         slots: []
       })
@@ -200,7 +197,6 @@
 
 
   let menuEl;
-  let weekMenuEl;
 
 
   function getSelectedKeys() {
@@ -250,8 +246,6 @@
   function hideMenu() {
     menuPosition.x = -1000;
     menuPosition.y = -1000;
-    weekMenuPosition.x = -1000;
-    weekMenuPosition.y = -1000;
     menuOpen = false;
   }
 
@@ -262,36 +256,38 @@
   }
 
   function drawMenu() {
-    let lastSelected = {x: 0, y: 0};
-    let lastSelectedTopRow = {x: 0, y: 0};
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     Object.values(selected).forEach(rect => {
-      if (rect.x >= lastSelected.x && rect.y >= lastSelected.y) {
-        lastSelected = rect
-      }
-      if (lastSelectedTopRow.y === 0 || (rect.x >= lastSelectedTopRow.x && rect.y <= lastSelectedTopRow.y)) {
-        lastSelectedTopRow = rect
-      }
+      minX = Math.min(minX, rect.x)
+      minY = Math.min(minY, rect.y)
+      maxX = Math.max(maxX, rect.x + rect.width)
+      maxY = Math.max(maxY, rect.y + rect.height)
     });
 
     const canvasPosition = canvas.getBoundingClientRect()
     const menuBoundData = menuEl.getBoundingClientRect()
+    const mw = menuBoundData.width
+    const mh = menuBoundData.height
+    const gap = 8
+    const margin = 12
 
-    let x = canvasPosition.left + lastSelected.x - 48
-    let y = canvasPosition.top + lastSelected.y + slotSizeY + 4
+    const leftX = canvasPosition.left + minX - mw - gap
+    const rightX = canvasPosition.left + maxX + gap
 
-    if (x + menuBoundData.width > window.innerWidth - 12) {
-      x = window.innerWidth - menuBoundData.width - 12
+    let x
+    if (leftX >= margin) {
+      x = leftX
+    } else if (rightX + mw <= window.innerWidth - margin) {
+      x = rightX
+    } else {
+      x = margin
     }
-    if (y + menuBoundData.height > window.innerHeight - 12) {
-      y = canvasPosition.top + lastSelectedTopRow.y - menuBoundData.height - 8
-    }
 
-    if (x < 12) x = 12
-    if (y < 12) y = 12
+    const y = canvasPosition.top + minY
 
-    menuPosition.x = x
-    menuPosition.y = y
+    menuPosition.x = Math.max(margin, Math.min(x, window.innerWidth - mw - margin))
+    menuPosition.y = Math.max(margin, Math.min(y, window.innerHeight - mh - margin))
     menuOpen = true
   }
 
@@ -299,16 +295,70 @@
   function render() {
     hideMenu()
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setLineDash([]);
     drawDates()
     drawHeader()
     drawTimeline()
+    drawDayMarkers()
+  }
+
+  function drawDayMarkers() {
+    if (copySourceWeek) {
+      ctx.fillStyle = 'rgba(0, 150, 255, 0.5)';
+      ctx.beginPath();
+      ctx.roundRect(1, copySourceWeek.startY + rowH + 1, weekZoneWidth - 3, copySourceWeek.days.length * rowH - 2, 4);
+      ctx.fill();
+    }
+
+    for (const r of dayRanges) {
+      if (r.key === copySourceDay) {
+        ctx.fillStyle = 'rgba(0, 150, 255, 0.6)';
+        ctx.beginPath();
+        ctx.roundRect(weekZoneWidth + 1, r.top + 1, paddingLeft - weekZoneWidth - 3, rowH - 2, 3);
+        ctx.fill();
+      } else if (r.key === hoveredDay) {
+        ctx.fillStyle = 'rgba(0, 150, 255, 0.25)';
+        ctx.beginPath();
+        ctx.roundRect(weekZoneWidth + 1, r.top + 1, paddingLeft - weekZoneWidth - 3, rowH - 2, 3);
+        ctx.fill();
+      }
+    }
+  }
+
+  function copyWeek(srcWeek, dstWeek) {
+    for (let i = 0; i < srcWeek.days.length && i < dstWeek.days.length; i++) {
+      copyDay(srcWeek.days[i], dstWeek.days[i])
+    }
+  }
+
+  function copyDay(srcDay, dstDay) {
+    for (let key of Object.keys($slotsInfo)) {
+      const date = key.split(' ')[0]
+      const time = key.split(' ')[1]
+
+      if (date !== srcDay) continue
+
+      const src = $slotsInfo[key]
+      const trgKey = dstDay + ' ' + time
+
+      const trg = JSON.parse(JSON.stringify(src))
+      trg.key = trgKey
+
+      if (trg.rest) {
+        trg.rest = trg.rest.map(r => dstDay + ' ' + r.split(' ')[1])
+      }
+
+      $slotsInfo[trgKey] = trg
+    }
   }
 
   const weeks = []
+  const dayRanges = []
 
   function drawDates() {
     weeks.length = 0
-    ctx.font = "11px Rubik";
+    dayRanges.length = 0
+    ctx.font = "11px monospace";
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -324,6 +374,7 @@
       const day = days[i]
       const dow = day.date.getDay()
       y += rowH;
+      dayRanges.push({key: day.key, top: y, bottom: y + rowH})
       // ctx.strokeStyle = 'black';
       ctx.fillStyle = '#FFF';
       ctx.fillRect(0, y, datesPaddingLeft, rowH);
@@ -333,7 +384,7 @@
         ctx.fillStyle = '#FF0000';
       }
 
-      ctx.fillText(day.label, datesPaddingLeft / 2, y + rowH / 2 + 2);
+      ctx.fillText(day.label, (weekZoneWidth + datesPaddingLeft) / 2, y + rowH / 2 + 2);
 
       if (selectedTag) {
         ctx.globalAlpha = 0.2
@@ -526,6 +577,7 @@
       }
 
       ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+      ctx.setLineDash([]);
       const textX = rect.x + rect.width / 2;
       const textY = rect.y + rect.height / 2 + 1;
       ctx.fillStyle = textColor;
@@ -603,18 +655,10 @@
   };
 
 
-  function weekMenuActionDone(e) {
-    lastWeekSelection = null
-    hideMenu()
-    console.log('weekMenuActionDone', e.detail)
-
-      $hasChanges = true
-      render()
-
-
-  }
-
   let lastWeekSelection = null
+  let hoveredDay = null
+  let copySourceDay = null
+  let copySourceWeek = null
 
   function drawWeekSelection(week) {
     if (menuOpen) return;
@@ -632,7 +676,7 @@
     ctx.strokeStyle = "red";
 
     ctx.beginPath();
-    ctx.roundRect(1, week.startY + rowH + 1, paddingLeft - 4, week.days.length * rowH - 2, 4);
+    ctx.roundRect(1, week.startY + rowH + 1, weekZoneWidth - 3, week.days.length * rowH - 2, 4);
     ctx.closePath();
 
     // Fill the shape
@@ -643,18 +687,33 @@
 
   function onMouseEmptyMove(mouseX, mouseY) {
 
-    if (mouseX < paddingLeft) {
+    if (mouseX < weekZoneWidth) {
+      if (hoveredDay !== null) {
+        hoveredDay = null
+        render()
+      }
       for (let week of weeks) {
         if (mouseY > week.startY + rowH && mouseY <= week.y + rowH) {
           drawWeekSelection(week)
           return
         }
       }
-    } else {
-      if (lastWeekSelection !== null) {
+      return
+    }
+    if (mouseX < paddingLeft) {
+      const hovered = dayRanges.find(r => mouseY >= r.top && mouseY < r.bottom)
+      const key = hovered ? hovered.key : null
+      if (key !== hoveredDay || lastWeekSelection !== null) {
+        hoveredDay = key
         lastWeekSelection = null
         render()
       }
+      return
+    }
+    if (lastWeekSelection !== null || hoveredDay !== null) {
+      lastWeekSelection = null
+      hoveredDay = null
+      render()
     }
 
   }
@@ -681,30 +740,9 @@
 
     lastWeekSelection = null
     render();
+    ctx.setLineDash([]);
     ctx.strokeStyle = 'blue';
     ctx.strokeRect(startX, startY, width, height);
-  }
-
-
-  function drawWeekMenu(mouseX, mouseY, week) {
-    const canvasPosition = canvas.getBoundingClientRect()
-
-    let x = canvasPosition.left + mouseX + 8
-    let y = canvasPosition.top + mouseY + 8
-
-    if (weekMenuEl) {
-      const menuBoundData = weekMenuEl.getBoundingClientRect()
-      if (x + menuBoundData.width > window.innerWidth - 12) {
-        x = window.innerWidth - menuBoundData.width - 12
-      }
-      if (y + menuBoundData.height > window.innerHeight - 12) {
-        y = canvasPosition.top + mouseY - menuBoundData.height - 8
-      }
-    }
-
-    weekMenuPosition.x = Math.max(x, 12)
-    weekMenuPosition.y = Math.max(y, 12)
-    menuOpen = true
   }
 
 
@@ -721,8 +759,33 @@
     }
 
 
-    if (lastWeekSelection !== null && startX < paddingLeft) {
-      drawWeekMenu(startX, startY, lastWeekSelection)
+    if (startX < weekZoneWidth) {
+      if (lastWeekSelection === null) return
+      if (copySourceWeek === null) {
+        copySourceWeek = lastWeekSelection
+      } else if (copySourceWeek === lastWeekSelection) {
+        copySourceWeek = null
+      } else {
+        copyWeek(copySourceWeek, lastWeekSelection)
+        copySourceWeek = null
+        $hasChanges = true
+      }
+      render()
+      return
+    }
+
+    if (startX < paddingLeft) {
+      if (!hoveredDay) return
+      if (copySourceDay === null) {
+        copySourceDay = hoveredDay
+      } else if (copySourceDay === hoveredDay) {
+        copySourceDay = null
+      } else {
+        copyDay(copySourceDay, hoveredDay)
+        copySourceDay = null
+        $hasChanges = true
+      }
+      render()
       return
     }
 

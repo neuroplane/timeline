@@ -70,4 +70,5 @@
 
     dispatch('done', {copyToNext: selected});
   }
+
 </script>

@@ -23,7 +23,7 @@
 
     {#if zone.types.length > 0}
         <div class="py-2 px-3">
-            {#each zone.types.filter(t => !t.label.startsWith('_')) as type}
+            {#each sortedTypes as type}
                 <div class="pb-1">
                     <Radio name="selectedType" bind:group={selectedType} value={type}>{type.label}</Radio>
                 </div>
@@ -76,6 +76,19 @@
   export let zone;
   export let selectedKeys
   export let allowCombine = true
+
+  $: typeUsage = (() => {
+    const counts = {}
+    for (const slot of Object.values($slotsInfo)) {
+      if (slot.type) counts[slot.type] = (counts[slot.type] || 0) + 1
+    }
+    return counts
+  })()
+
+  $: sortedTypes = zone.types
+      .filter(t => !t.label.startsWith('_'))
+      .slice()
+      .sort((a, b) => (typeUsage[b.id] || 0) - (typeUsage[a.id] || 0))
 
   $: selectedKeys && drawMenu()
 
