@@ -1,5 +1,5 @@
 <main bind:this={main} style="padding:10px">
-  <canvas bind:this={canvas} height={canvasHeight} id="canvas" width={canvasWidth} style="background:#fff; display:block"></canvas>
+  <canvas bind:this={canvas} id="canvas" style="background:#fff; display:block"></canvas>
   {#if debugMode}
     <!--        <div class="mt-2 text-gray-500" style="font-size: 8px">-->
     <!--            <pre>checkboxes: {JSON.stringify(tagsCheckBoxes)}</pre>-->
@@ -740,13 +740,11 @@
 
     ctx = canvas.getContext('2d');
     const ratio = window.devicePixelRatio || 1;
+    canvas.width = canvasWidth * ratio;
+    canvas.height = canvasHeight * ratio;
+    canvas.style.width = canvasWidth + "px";
+    canvas.style.height = canvasHeight + "px";
     if (ratio > 1) {
-      const canvasWidth = canvas.width;
-      const canvasHeight = canvas.height;
-      canvas.width = canvasWidth * ratio;
-      canvas.height = canvasHeight * ratio;
-      canvas.style.width = canvasWidth + "px";
-      canvas.style.height = canvasHeight + "px";
       ctx.scale(ratio, ratio);
     }
 
