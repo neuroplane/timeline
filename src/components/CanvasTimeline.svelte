@@ -701,10 +701,14 @@
         render()
       }
       for (let week of weeks) {
-        if (mouseY > week.startY + rowH && mouseY <= week.y + rowH) {
+        if (mouseY > week.startY + rowH + 1 && mouseY <= week.y + rowH - 1) {
           drawWeekSelection(week)
           return
         }
+      }
+      if (lastWeekSelection !== null) {
+        lastWeekSelection = null
+        render()
       }
       return
     }
