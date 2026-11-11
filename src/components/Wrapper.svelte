@@ -9,8 +9,14 @@
         <div class="w-max-20">
             <Select size="sm" class="py-1 text-sm" style="height:34px" items={$zones.map(a=>({value:a.id, name:a.label}))} on:change={handleZoneChange} bind:value={zoneSwitch.current}/>
         </div>
-        <div class="w-max-20">
+        <div class="w-max-20 flex items-center gap-1">
+            <Button size="xs" outline class="px-2" title="Неделя назад" on:click={()=>shiftWeek(-1)}>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            </Button>
             <Input size="sm" id="minDate" on:change={handleDateChange} bind:value={minDate} name="minDate" required type="date"/>
+            <Button size="xs" outline class="px-2" title="Неделя вперёд" on:click={()=>shiftWeek(1)}>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </Button>
         </div>
         <div class="w-max-20">
             <Button size="xs" disabled={!$hasChanges} outline on:click={handleSave}>Сохранить</Button>
@@ -144,6 +150,12 @@
 
   function handleDateChange(e) {
     minDate = fmtLocal(startOfWeek(e.target.value))
+  }
+
+  function shiftWeek(dir) {
+    const d = new Date(minDate)
+    d.setDate(d.getDate() + dir * 7)
+    minDate = fmtLocal(d)
   }
 
   let minDate = fmtLocal(startOfWeek(new Date()))
