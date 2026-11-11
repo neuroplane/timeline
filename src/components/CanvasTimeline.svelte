@@ -31,9 +31,10 @@
 </main>
 
 <script>
-  import {onMount} from 'svelte';
+  import {onMount, onDestroy} from 'svelte';
   import Menu from "./Menu.svelte";
   import {hasChanges, slotsInfo} from "../lib/MainStore.js";
+  import {normalizeSlots, validateSlots} from "../lib/mergeIntegrity.js";
   import {apiService} from "../lib/api.js";
   import {SPOT_DURATION, SLOTS_PER_HOUR, MINUTES, START_HOUR, WORK_HOURS} from "../lib/constants.js";
 
@@ -252,6 +253,7 @@
   function backdropClick() {
     hideMenu()
     lastWeekSelection = null
+    selected = {}
     render()
   }
 
@@ -326,12 +328,26 @@
   }
 
   function copyWeek(srcWeek, dstWeek) {
+    console.groupCollapsed(`[copy] week ${srcWeek.days[0]}..${srcWeek.days.at(-1)} -> ${dstWeek.days[0]}..${dstWeek.days.at(-1)}`)
     for (let i = 0; i < srcWeek.days.length && i < dstWeek.days.length; i++) {
       copyDay(srcWeek.days[i], dstWeek.days[i])
     }
+    console.groupEnd()
   }
 
   function copyDay(srcDay, dstDay) {
+    // wipe destination day first: stale h:true children of old merged blocks
+    // would become orphans and break the row layout
+    let removed = 0
+    for (let key of Object.keys($slotsInfo)) {
+      if (key.split(' ')[0] === dstDay) {
+        delete $slotsInfo[key]
+        removed++
+      }
+    }
+    if (removed) console.debug(`[copy] wiped ${removed} existing slots in ${dstDay}`)
+
+    let copied = 0
     for (let key of Object.keys($slotsInfo)) {
       const date = key.split(' ')[0]
       const time = key.split(' ')[1]
@@ -348,8 +364,12 @@
         trg.rest = trg.rest.map(r => dstDay + ' ' + r.split(' ')[1])
       }
 
+      console.debug(`[copy] ${key} -> ${trgKey}`, trg)
       $slotsInfo[trgKey] = trg
+      copied++
     }
+    console.debug(`[copy] day ${srcDay} -> ${dstDay}: ${copied} slots${copied ? '' : ' (source empty)'}`)
+    return copied
   }
 
   const weeks = []
@@ -605,17 +625,17 @@
   let prevSelection;
 
 
+  function eventXY(e) {
+    const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e
+    const r = canvas.getBoundingClientRect()
+    return {x: t.clientX - r.left, y: t.clientY - r.top}
+  }
+
   function onMousseUp(e) {
     if (menuOpen) return;
     if (!isDrawing) return;
     isDrawing = false;
-    let mouseX = e.layerX - canvas.offsetLeft;
-    let mouseY = e.layerY - canvas.offsetTop;
-
-    if (isSafari) {
-      mouseX = e.layerX
-      mouseY = e.layerY
-    }
+    const {x: mouseX, y: mouseY} = eventXY(e)
 
 
     const width = mouseX - startX;
@@ -671,6 +691,7 @@
     render()
 
     lastWeekSelection = week
+    console.debug('[week] select:', week.days[0], '..', week.days.at(-1))
     ctx.fillStyle = `rgba(0, 150, 255, 0.2)`;
 
     ctx.strokeStyle = "red";
@@ -737,13 +758,8 @@
 
     e.preventDefault();
 
-    let mouseX = e.layerX - canvas.offsetLeft;
-    let mouseY = e.layerY - canvas.offsetTop;
-
-    if (isSafari) {
-      mouseX = e.layerX
-      mouseY = e.layerY
-    }
+    if (!canvas) return
+    const {x: mouseX, y: mouseY} = eventXY(e)
 
     if (!isDrawing) return onMouseEmptyMove(mouseX, mouseY);
 
@@ -762,24 +778,24 @@
 
     if (menuOpen) return;
 
-    if (isSafari) {
-      startX = e.layerX
-      startY = e.layerY
-    } else {
-      startX = e.layerX - canvas.offsetLeft;
-      startY = e.layerY - canvas.offsetTop;
-    }
+    const p = eventXY(e)
+    startX = p.x
+    startY = p.y
 
 
     if (startX < weekZoneWidth) {
       if (lastWeekSelection === null) return
       if (copySourceWeek === null) {
         copySourceWeek = lastWeekSelection
-      } else if (copySourceWeek === lastWeekSelection) {
+        console.debug('[copy] week source set:', copySourceWeek.days[0], '..', copySourceWeek.days.at(-1))
+      } else if (copySourceWeek.days[0] === lastWeekSelection.days[0]) {
         copySourceWeek = null
+        console.debug('[copy] week source cleared')
       } else {
         copyWeek(copySourceWeek, lastWeekSelection)
         copySourceWeek = null
+        const fixed = normalizeSlots($slotsInfo)
+        if (fixed.length) console.warn('[slots] normalized after week copy', fixed)
         $hasChanges = true
       }
       render()
@@ -790,11 +806,15 @@
       if (!hoveredDay) return
       if (copySourceDay === null) {
         copySourceDay = hoveredDay
+        console.debug('[copy] day source set:', copySourceDay)
       } else if (copySourceDay === hoveredDay) {
         copySourceDay = null
+        console.debug('[copy] day source cleared')
       } else {
         copyDay(copySourceDay, hoveredDay)
         copySourceDay = null
+        const fixed = normalizeSlots($slotsInfo)
+        if (fixed.length) console.warn('[slots] normalized after day copy', fixed)
         $hasChanges = true
       }
       render()
@@ -854,6 +874,14 @@
 
   });
 
+  onDestroy(() => {
+    window.removeEventListener('mouseup', onMousseUp);
+    window.removeEventListener('mousemove', onMousseMove);
+    window.removeEventListener('touchend', onMousseUp);
+    window.removeEventListener('touchmove', onMousseMove);
+
+  });
+
   function getSlots() {
     const startDate = startOfWeek(fromDate)
     const maxDate = getDateString(new Date(startDate.getTime() + (normalizedDaysCount * 24 * 60 * 60 * 1000)))
@@ -867,6 +895,8 @@
       const savedSlotsMap = Object.fromEntries(savedSlots.map(a => [a.key, a]))
       $slotsInfo = {...savedSlotsMap, ...$slotsInfo}
       console.log('slotsInfo', $slotsInfo)
+      const integrityIssues = validateSlots($slotsInfo)
+      if (integrityIssues.length) console.warn(`[slots] ${integrityIssues.length} integrity issues`, integrityIssues)
       render();
 
     })

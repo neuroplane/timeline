@@ -74,6 +74,7 @@
   import CanvasTimeline from "./CanvasTimeline.svelte";
   import {hasChanges, slotsInfo, zones, settings} from "../lib/MainStore.js";
   import {apiService} from "../lib/api.js";
+  import {normalizeSlots} from "../lib/mergeIntegrity.js";
   import {slide} from "svelte/transition";
   import ExportModal from "./ExportModal.svelte";
   import SettingsMenu from "./SettingsMenu.svelte";
@@ -165,6 +166,8 @@
   // getZones().then(a => zones = a)
 
   function handleSave() {
+    const fixed = normalizeSlots($slotsInfo)
+    if (fixed.length) console.warn(`[slots] normalized ${fixed.length} issues before save`, fixed)
     apiService.saveSlots(selectedZone.id, Object.values($slotsInfo)).then(a => {
       $hasChanges = false
       savedToast = true

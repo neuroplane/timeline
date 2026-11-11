@@ -70,6 +70,7 @@
   import {Button, Checkbox, Input, Radio} from "flowbite-svelte";
 
   import {hasChanges, selected, slotsInfo} from "../lib/MainStore.js";
+  import {normalizeSlots} from "../lib/mergeIntegrity.js";
   import {createEventDispatcher} from "svelte";
 
 
@@ -104,6 +105,8 @@
 
   function handleSplitGroupClick() {
     splitSelectedSlots()
+    const fixed = normalizeSlots($slotsInfo)
+    if (fixed.length) console.warn('[slots] normalized after split', fixed)
     dispatch('done', {resetSelected: false});
     $hasChanges = true
 
@@ -213,6 +216,9 @@
     setValueToSelectedSlots('comment', comment)
 
     setValueToSelectedSlots('tags', selectedTags)
+
+    const fixed = normalizeSlots($slotsInfo)
+    if (fixed.length) console.warn('[slots] normalized after apply', fixed)
 
     dispatch('done', {resetSelected: true});
     $hasChanges = true
