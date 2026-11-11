@@ -688,6 +688,14 @@
   function onMouseEmptyMove(mouseX, mouseY) {
 
     if (mouseX < weekZoneWidth) {
+      if (mouseX < 1) {
+        if (lastWeekSelection !== null || hoveredDay !== null) {
+          lastWeekSelection = null
+          hoveredDay = null
+          render()
+        }
+        return
+      }
       if (hoveredDay !== null) {
         hoveredDay = null
         render()
